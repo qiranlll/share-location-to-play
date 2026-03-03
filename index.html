@@ -1,0 +1,304 @@
+
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>一起去玩 · 共享地图计划</title>
+    <!-- 引入样式和高德地图 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script type="text/javascript">
+        window._AMapSecurityConfig = {
+            securityJsCode: "8b94101e6804a3721796791986423c8a",
+        };
+    </script>
+    <script src="https://webapi.amap.com/maps?v=2.0&key=19baf6ac62336e352d5be64d525b8f47&plugin=AMap.AutoComplete,AMap.PlaceSearch,AMap.Geocoder"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700;900&display=swap');
+        body { font-family: 'Noto Sans SC', sans-serif; margin: 0; padding: 0; overflow: hidden; }
+        .amap-logo, .amap-copyright { display: none !important; }
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+    </style>
+    <!-- 引入 React (通过 ESM) -->
+    <script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@19.0.0",
+    "react-dom": "https://esm.sh/react-dom@19.0.0",
+    "react-dom/client": "https://esm.sh/react-dom@19.0.0/client",
+    "react/": "https://esm.sh/react@^19.2.4/"
+  }
+}
+</script>
+</head>
+<body class="bg-slate-50 text-slate-900">
+    <div id="root"></div>
+
+    <script type="module">
+        import React, { useState, useEffect, useRef } from 'react';
+        import ReactDOM from 'react-dom/client';
+
+        // --- 配置 ---
+        const COLORS = ['#ef4444', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#71717a'];
+        const STORAGE_KEYS = {
+            HISTORY: 'go_play_history_v4',
+            USER: 'go_play_user_v4',
+            ROOM_PREFIX: 'go_play_room_v4_'
+        };
+
+        // --- 地图组件 ---
+        const MapView = ({ markers, onMapClick }) => {
+            const mapRef = useRef(null);
+            const containerRef = useRef(null);
+            const markersRef = useRef({});
+            const placeSearchRef = useRef(null);
+
+            useEffect(() => {
+                if (!containerRef.current || mapRef.current) return;
+
+                const map = new window.AMap.Map(containerRef.current, {
+                    zoom: 12, center: [116.397428, 39.90923], mapStyle: 'amap://styles/light'
+                });
+                mapRef.current = map;
+
+                const autoComplete = new window.AMap.AutoComplete({ input: 'search-input', city: '全国' });
+                placeSearchRef.current = new window.AMap.PlaceSearch({ map, pageSize: 1, autoFitView: true });
+
+                autoComplete.on('select', (e) => {
+                    const { poi } = e;
+                    if (!poi) return;
+                    const locate = (name, lng, lat) => {
+                        map.setCenter([lng, lat]);
+                        map.setZoom(17);
+                        onMapClick(lat, lng, name);
+                    };
+                    if (poi.location) {
+                        locate(poi.name, poi.location.lng, poi.location.lat);
+                    } else {
+                        placeSearchRef.current.search(poi.name, (status, result) => {
+                            if (status === 'complete' && result.poiList && result.poiList.pois.length > 0) {
+                                const p = result.poiList.pois[0];
+                                locate(p.name, p.location.lng, p.location.lat);
+                            }
+                        });
+                    }
+                    const input = document.getElementById('search-input');
+                    if (input) setTimeout(() => input.value = '', 100);
+                });
+
+                map.on('click', (e) => {
+                    new window.AMap.Geocoder().getAddress([e.lnglat.lng, e.lnglat.lat], (status, result) => {
+                        const addr = (status === 'complete' && result.regeocode) ? result.regeocode.formattedAddress : `位置(${e.lnglat.lng.toFixed(4)},${e.lnglat.lat.toFixed(4)})`;
+                        onMapClick(e.lnglat.lat, e.lnglat.lng, addr);
+                    });
+                });
+
+                return () => map.destroy();
+            }, []);
+
+            useEffect(() => {
+                if (!mapRef.current) return;
+                Object.keys(markersRef.current).forEach(id => {
+                    if (!markers.find(m => m.id === id)) {
+                        mapRef.current.remove(markersRef.current[id]);
+                        delete markersRef.current[id];
+                    }
+                });
+                markers.forEach(m => {
+                    if (!markersRef.current[m.id]) {
+                        const marker = new window.AMap.Marker({
+                            position: [m.lng, m.lat],
+                            content: `<div class="bg-white p-1 rounded-full shadow-lg border-2" style="border-color:${m.userColor}"><div class="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white shadow-inner" style="background-color:${m.userColor}">${m.userName.charAt(0)}</div></div>`,
+                            offset: new window.AMap.Pixel(-14, -14),
+                            title: m.name
+                        });
+                        marker.on('click', () => {
+                            new window.AMap.InfoWindow({
+                                content: `<div class="p-3"><h4 class="font-bold text-slate-800 border-b pb-1 mb-1">${m.name}</h4><p class="text-xs text-slate-500">${m.note || '暂无备注'}</p></div>`,
+                                offset: new window.AMap.Pixel(0, -20)
+                            }).open(mapRef.current, marker.getPosition());
+                        });
+                        marker.setMap(mapRef.current);
+                        markersRef.current[m.id] = marker;
+                    }
+                });
+            }, [markers]);
+
+            return <div ref={containerRef} className="w-full h-full" />;
+        };
+
+        // --- 主程序 ---
+        const App = () => {
+            const [roomCode, setRoomCode] = useState(null);
+            const [user, setUser] = useState(null);
+            const [roomData, setRoomData] = useState({ title: '', markers: [] });
+            const [history, setHistory] = useState([]);
+            const [isAdding, setIsAdding] = useState(false);
+            const [pending, setPending] = useState(null);
+            const [editingTitle, setEditingTitle] = useState(false);
+            const [joinInput, setJoinInput] = useState('');
+
+            useEffect(() => {
+                const params = new URLSearchParams(window.location.search);
+                const code = params.get('room');
+                if (code) setRoomCode(code);
+
+                const savedUser = localStorage.getItem(STORAGE_KEYS.USER);
+                if (savedUser) setUser(JSON.parse(savedUser));
+                else {
+                    const u = { id: Math.random().toString(36).substring(2, 9), name: '游客', color: COLORS[0] };
+                    setUser(u);
+                    localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(u));
+                }
+
+                const savedHistory = localStorage.getItem(STORAGE_KEYS.HISTORY);
+                if (savedHistory) setHistory(JSON.parse(savedHistory));
+            }, []);
+
+            useEffect(() => {
+                if (roomCode) {
+                    const raw = localStorage.getItem(STORAGE_KEYS.ROOM_PREFIX + roomCode);
+                    const data = raw ? JSON.parse(raw) : { title: `旅行计划 ${roomCode}`, markers: [] };
+                    setRoomData(data);
+                    updateHistory(roomCode, data.title);
+                }
+            }, [roomCode]);
+
+            const updateHistory = (code, title) => {
+                const raw = localStorage.getItem(STORAGE_KEYS.HISTORY);
+                let list = raw ? JSON.parse(raw) : [];
+                const idx = list.findIndex(h => h.code === code);
+                const item = { code, title: title || `房号 ${code}`, time: Date.now() };
+                if (idx > -1) list[idx] = item; else list.push(item);
+                list.sort((a, b) => b.time - a.time);
+                setHistory(list.slice(0, 10));
+                localStorage.setItem(STORAGE_KEYS.HISTORY, JSON.stringify(list.slice(0, 10)));
+            };
+
+            const saveRoom = (newData) => {
+                setRoomData(newData);
+                localStorage.setItem(STORAGE_KEYS.ROOM_PREFIX + roomCode, JSON.stringify(newData));
+                updateHistory(roomCode, newData.title);
+            };
+
+            const enterRoom = (code) => { setRoomCode(code); window.history.pushState({}, '', `?room=${code}`); };
+
+            if (!user) return null;
+
+            if (!roomCode) {
+                return (
+                    <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6">
+                        <div className="w-full max-w-md space-y-8">
+                            <div className="text-center">
+                                <div className="text-6xl mb-4">📍</div>
+                                <h1 className="text-4xl font-black text-slate-800 tracking-tighter italic">一起去玩</h1>
+                                <p className="text-slate-400 font-medium">输入 6 位码，同步你们的旅行地图</p>
+                            </div>
+                            <div className="bg-white p-6 rounded-[2.5rem] shadow-xl border border-white space-y-6">
+                                <div className="grid grid-cols-2 gap-4">
+                                    <button onClick={() => enterRoom(Math.floor(100000 + Math.random() * 900000).toString())} className="p-8 bg-orange-500 text-white rounded-[2rem] font-black shadow-lg shadow-orange-100 hover:bg-orange-600 active:scale-95 transition-all text-center">
+                                        <div className="text-2xl mb-1">✨</div>新建房间
+                                    </button>
+                                    <div className="p-6 bg-slate-50 border-2 border-slate-100 rounded-[2rem] flex flex-col items-center justify-center space-y-2">
+                                        <input placeholder="6位房号" value={joinInput} onChange={e => setJoinInput(e.target.value.replace(/\D/g, '').slice(0,6))} className="w-full text-center bg-transparent font-mono font-black text-xl outline-none border-b-2 border-slate-200 focus:border-blue-400" />
+                                        <button onClick={() => joinInput.length === 6 && enterRoom(joinInput)} className="text-[10px] font-black text-blue-500 uppercase">加入房间</button>
+                                    </div>
+                                </div>
+                                {history.length > 0 && (
+                                    <div className="space-y-3 pt-4 border-t border-slate-100">
+                                        <h3 className="text-[10px] font-black text-slate-300 uppercase tracking-widest px-2">最近的计划</h3>
+                                        <div className="space-y-2 max-h-[250px] overflow-y-auto pr-1 custom-scrollbar">
+                                            {history.map(h => (
+                                                <button key={h.code} onClick={() => enterRoom(h.code)} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl flex items-center justify-between hover:border-blue-300 hover:bg-white transition-all group">
+                                                    <div className="text-left overflow-hidden"><p className="font-black text-slate-700 truncate group-hover:text-blue-600">{h.title}</p><p className="text-[10px] text-slate-400">房号: {h.code}</p></div>
+                                                    <div className="text-blue-400 opacity-0 group-hover:opacity-100 transition-all text-sm font-bold">进入</div>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            return (
+                <div className="h-screen w-full flex">
+                    <div className="w-[340px] h-full bg-white border-r border-slate-200 flex flex-col z-50 shadow-2xl overflow-hidden">
+                        <div className="p-6 space-y-6">
+                            <div className="flex items-center justify-between">
+                                <button onClick={() => { setRoomCode(null); window.history.pushState({}, '', '/'); }} className="text-slate-400 hover:text-blue-500"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg></button>
+                                <span className="px-3 py-1 bg-slate-100 text-slate-500 rounded-full font-mono font-bold text-xs">#{roomCode}</span>
+                            </div>
+                            <div className="group">
+                                {editingTitle ? (
+                                    <input autoFocus className="text-2xl font-black text-slate-800 w-full border-b-4 border-blue-400 outline-none pb-1" value={roomData.title} onChange={e => saveRoom({ ...roomData, title: e.target.value })} onBlur={() => setEditingTitle(false)} onKeyDown={e => e.key === 'Enter' && setEditingTitle(false)} />
+                                ) : (
+                                    <div onClick={() => setEditingTitle(true)} className="flex items-center gap-2 cursor-pointer">
+                                        <h1 className="text-2xl font-black text-slate-800 truncate">{roomData.title || '未命名旅行'}</h1>
+                                        <span className="text-blue-200 group-hover:text-blue-500 transition-colors">✎</span>
+                                    </div>
+                                )}
+                            </div>
+                            <div className="relative">
+                                <input id="search-input" type="text" placeholder="搜索目的地，如：北京故宫" className="w-full p-4 pl-12 bg-slate-50 border-2 border-slate-100 rounded-2xl text-sm font-bold outline-none focus:border-blue-400 transition-all shadow-inner" />
+                                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300">🔍</span>
+                            </div>
+                        </div>
+                        <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50/50 custom-scrollbar">
+                            {roomData.markers.length === 0 ? (
+                                <div className="h-full flex flex-col items-center justify-center opacity-30"><div className="text-5xl mb-4">📍</div><p className="font-black">搜“故宫”或点击地图</p></div>
+                            ) : (
+                                roomData.markers.slice().reverse().map(m => (
+                                    <div key={m.id} className="p-4 bg-white rounded-2xl border border-slate-100 shadow-sm relative group hover:border-blue-200 transition-all">
+                                        <div className="flex gap-3">
+                                            <div className="w-1 rounded-full shrink-0" style={{ backgroundColor: m.userColor }} />
+                                            <div className="flex-1 overflow-hidden"><h4 className="font-bold text-slate-800 truncate">{m.name}</h4>{m.note && <p className="text-xs text-slate-400 mt-1 line-clamp-2">{m.note}</p>}</div>
+                                        </div>
+                                        {m.userId === user.id && <button onClick={() => saveRoom({ ...roomData, markers: roomData.markers.filter(x => x.id !== m.id) })} className="absolute top-2 right-2 p-1 text-slate-200 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all">✕</button>}
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    </div>
+                    <div className="flex-1 relative">
+                        <MapView markers={roomData.markers} onMapClick={(lat, lng, name) => { setPending({ lat, lng, name }); setIsAdding(true); }} />
+                    </div>
+                    {isAdding && pending && (
+                        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[3000] flex items-center justify-center p-4">
+                            <div className="bg-white w-full max-w-sm rounded-[2.5rem] p-8 shadow-2xl transform animate-in zoom-in-95">
+                                <h3 className="text-xl font-black text-slate-800 mb-6 text-center">保存此地点</h3>
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2 mb-1 block">地名</label>
+                                        <input autoFocus id="m-name" defaultValue={pending.name} className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-black text-slate-700 outline-none focus:border-blue-400" />
+                                    </div>
+                                    <div>
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2 mb-1 block">备注 (可选)</label>
+                                        <textarea id="m-note" placeholder="写点攻略吧..." className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl text-sm outline-none focus:border-blue-400 resize-none" rows={2} />
+                                    </div>
+                                    <div className="flex gap-3 pt-4">
+                                        <button onClick={() => setIsAdding(false)} className="flex-1 py-4 bg-slate-100 text-slate-500 font-bold rounded-2xl hover:bg-slate-200">取消</button>
+                                        <button onClick={() => {
+                                            const name = document.getElementById('m-name').value || pending.name;
+                                            const note = document.getElementById('m-note').value;
+                                            const m = { id: Math.random().toString(36).substring(2,9), name, note, lat: pending.lat, lng: pending.lng, userId: user.id, userName: user.name, userColor: user.color, createdAt: Date.now() };
+                                            saveRoom({ ...roomData, markers: [...roomData.markers, m] });
+                                            setIsAdding(false);
+                                        }} className="flex-1 py-4 bg-blue-600 text-white font-black rounded-2xl shadow-xl shadow-blue-100 active:scale-95 transition-all hover:bg-blue-700">保存</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+    </script>
+</body>
+</html>
