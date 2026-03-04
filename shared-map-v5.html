@@ -1,0 +1,1192 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- Firebase SDK -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/9.23.0/firebase-app-compat.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/9.23.0/firebase-database-compat.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/9.23.0/firebase-auth-compat.min.js"></script>
+<title>一起去玩 · 共享地图</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700;900&display=swap');
+
+  :root {
+    --bg: #f5f7fa;
+    --surface: #ffffff;
+    --surface2: #f0f2f5;
+    --border: #e4e8ef;
+    --accent: #ff5c3a;
+    --accent2: #3b82f6;
+    --accent3: #22c55e;
+    --text: #1a1d23;
+    --text-muted: #6b7280;
+    --shadow: rgba(0,0,0,0.08);
+    --shadow-md: rgba(0,0,0,0.12);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Noto Sans SC', sans-serif; background: var(--bg); color: var(--text); height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
+
+  /* ===== ROOM SCREEN ===== */
+  #roomScreen {
+    position: fixed; inset: 0;
+    background: linear-gradient(145deg, #fff9f6 0%, #f0f5ff 50%, #f5fff8 100%);
+    display: flex; align-items: center; justify-content: center; z-index: 9999;
+    overflow-y: auto; padding: 20px 0;
+  }
+  .room-card {
+    background: #fff; border-radius: 24px; padding: 36px 40px 32px;
+    width: 440px; max-width: 92vw;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.10), 0 4px 16px rgba(0,0,0,0.06);
+    text-align: center;
+  }
+  .room-logo { font-size: 36px; margin-bottom: 8px; }
+  .room-title { font-size: 26px; font-weight: 900; color: var(--text); margin-bottom: 4px; letter-spacing: -0.5px; }
+  .room-sub { font-size: 14px; color: var(--text-muted); margin-bottom: 28px; line-height: 1.6; }
+  .room-step { display: none; }
+  .room-step.active { display: block; }
+  .back-link { color: var(--text-muted); font-size: 13px; cursor: pointer; margin-top: 14px; display: inline-block; text-decoration: underline; }
+  .back-link:hover { color: var(--text); }
+
+  /* ===== AUTH SCREEN ===== */
+  #authScreen {
+    position: fixed; inset: 0;
+    background: linear-gradient(145deg, #fff9f6 0%, #f0f5ff 50%, #f5fff8 100%);
+    display: flex; align-items: center; justify-content: center; z-index: 10000;
+    overflow-y: auto; padding: 20px 0;
+  }
+  .auth-card {
+    background: #fff; border-radius: 24px; padding: 40px 40px 36px;
+    width: 400px; max-width: 92vw;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.10), 0 4px 16px rgba(0,0,0,0.06);
+    text-align: center;
+  }
+  .auth-logo { font-size: 40px; margin-bottom: 10px; }
+  .auth-title { font-size: 26px; font-weight: 900; color: var(--text); margin-bottom: 4px; }
+  .auth-sub { font-size: 14px; color: var(--text-muted); margin-bottom: 32px; line-height: 1.6; }
+  .auth-tabs { display: flex; background: var(--surface2); border-radius: 12px; padding: 4px; margin-bottom: 24px; }
+  .auth-tab {
+    flex: 1; padding: 9px; border-radius: 9px; font-size: 14px; font-weight: 600;
+    cursor: pointer; border: none; background: transparent; color: var(--text-muted);
+    font-family: inherit; transition: all 0.18s;
+  }
+  .auth-tab.active { background: #fff; color: var(--text); box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+  .auth-field { text-align: left; margin-bottom: 14px; }
+  .auth-field label { display: block; font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 6px; }
+  .auth-input {
+    width: 100%; border: 2px solid var(--border); border-radius: 12px;
+    padding: 11px 14px; font-size: 14px; font-family: inherit;
+    color: var(--text); outline: none; transition: border-color 0.2s; background: #fff;
+  }
+  .auth-input:focus { border-color: var(--accent2); }
+  .auth-error { font-size: 12px; color: var(--accent); background: #fff5f3; border: 1px solid #ffc4b8; border-radius: 8px; padding: 8px 12px; margin-bottom: 14px; text-align: left; display: none; }
+  .auth-error.show { display: block; }
+  .auth-btn {
+    width: 100%; background: linear-gradient(135deg, var(--accent) 0%, #ff8a6a 100%);
+    color: #fff; border: none; border-radius: 14px; padding: 14px;
+    font-size: 16px; font-weight: 700; font-family: inherit; cursor: pointer;
+    transition: all 0.2s; box-shadow: 0 4px 16px rgba(255,92,58,0.35); margin-top: 4px;
+  }
+  .auth-btn:hover { transform: translateY(-1px); }
+  .auth-btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+  .auth-divider { display: flex; align-items: center; gap: 10px; margin: 16px 0; }
+  .auth-divider-line { flex: 1; height: 1px; background: var(--border); }
+  .auth-divider-text { font-size: 12px; color: var(--text-muted); }
+  .user-info-row {
+    display: flex; align-items: center; gap: 8px;
+    background: var(--surface2); border-radius: 12px; padding: 8px 12px;
+    margin-bottom: 8px;
+  }
+  .user-avatar-sm {
+    width: 28px; height: 28px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 700; color: #fff; flex-shrink: 0;
+  }
+  .user-display-name { font-size: 13px; font-weight: 600; flex: 1; text-align: left; }
+  .logout-btn {
+    font-size: 12px; color: var(--text-muted); background: none; border: none;
+    cursor: pointer; padding: 4px 8px; border-radius: 6px; font-family: inherit;
+    transition: all 0.15s;
+  }
+  .logout-btn:hover { color: var(--accent); background: #fff5f3; }
+
+  /* History rooms */
+  .history-section { margin-bottom: 20px; text-align: left; }
+  .history-title { font-size: 12px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+  .history-list { display: flex; flex-direction: column; gap: 6px; max-height: 180px; overflow-y: auto; }
+  .history-list::-webkit-scrollbar { width: 3px; }
+  .history-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+  .history-item {
+    display: flex; align-items: center; gap: 10px;
+    background: var(--surface2); border: 1.5px solid var(--border);
+    border-radius: 12px; padding: 10px 12px; cursor: pointer;
+    transition: all 0.15s; text-align: left;
+  }
+  .history-item:hover { border-color: var(--accent2); background: #f0f5ff; }
+  .history-item-icon { font-size: 18px; flex-shrink: 0; }
+  .history-item-info { flex: 1; min-width: 0; }
+  .history-item-name { font-size: 13px; font-weight: 700; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .history-item-meta { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+  .history-item-code { font-size: 11px; font-weight: 700; color: var(--accent); letter-spacing: 2px; background: #fff5f3; padding: 2px 7px; border-radius: 6px; flex-shrink: 0; }
+  .history-divider { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+  .history-divider-line { flex: 1; height: 1px; background: var(--border); }
+  .history-divider-text { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
+
+  .code-display {
+    font-size: 38px; font-weight: 900; letter-spacing: 10px;
+    color: var(--accent); text-align: center;
+    background: #fff5f3; border: 2px dashed #ffc4b8;
+    border-radius: 14px; padding: 14px 10px; margin-bottom: 6px;
+    cursor: pointer; transition: background 0.2s; user-select: none;
+  }
+  .code-display:hover { background: #ffe8e3; }
+  .code-copy-hint { font-size: 12px; color: var(--text-muted); margin-bottom: 20px; }
+
+  .code-inputs { display: flex; gap: 8px; justify-content: center; margin-bottom: 20px; }
+  .code-input-box {
+    width: 48px; height: 56px; border: 2px solid var(--border);
+    border-radius: 12px; text-align: center; font-size: 24px; font-weight: 700;
+    font-family: inherit; color: var(--text); outline: none; transition: all 0.15s; background: #fff;
+  }
+  .code-input-box:focus { border-color: var(--accent2); box-shadow: 0 0 0 3px rgba(59,130,246,0.15); }
+  .code-input-box.filled { border-color: var(--accent); background: #fff5f3; color: var(--accent); }
+
+  .field-label { text-align: left; font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 7px; }
+  .name-input {
+    width: 100%; border: 2px solid var(--border); border-radius: 12px;
+    padding: 11px 14px; font-size: 14px; font-family: inherit;
+    color: var(--text); outline: none; transition: border-color 0.2s; background: #fff; margin-bottom: 16px;
+  }
+  .name-input:focus { border-color: var(--accent2); }
+
+  .color-pick-row { display: flex; gap: 8px; justify-content: center; margin-bottom: 22px; }
+  .color-dot { width: 28px; height: 28px; border-radius: 50%; cursor: pointer; border: 3px solid transparent; transition: all 0.15s; }
+  .color-dot.sel { border-color: var(--text); transform: scale(1.2); }
+
+  .btn-enter {
+    width: 100%; background: linear-gradient(135deg, var(--accent) 0%, #ff8a6a 100%);
+    color: #fff; border: none; border-radius: 14px; padding: 14px;
+    font-size: 16px; font-weight: 700; font-family: inherit; cursor: pointer;
+    transition: all 0.2s; box-shadow: 0 4px 16px rgba(255,92,58,0.35);
+  }
+  .btn-enter:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(255,92,58,0.45); }
+  .btn-enter.blue { background: linear-gradient(135deg, var(--accent2), #6366f1); box-shadow: 0 4px 16px rgba(59,130,246,0.35); }
+  .btn-enter.blue:hover { box-shadow: 0 6px 20px rgba(59,130,246,0.45); }
+
+  .btn-create-opt {
+    width: 100%; background: #fff; color: var(--accent);
+    border: 2px solid var(--accent); border-radius: 14px; padding: 13px;
+    font-size: 15px; font-weight: 700; font-family: inherit; cursor: pointer;
+    transition: all 0.2s; margin-bottom: 12px;
+  }
+  .btn-create-opt:hover { background: #fff5f3; }
+  .btn-join-opt {
+    width: 100%; background: var(--accent2); color: #fff;
+    border: none; border-radius: 14px; padding: 14px;
+    font-size: 15px; font-weight: 700; font-family: inherit; cursor: pointer;
+    transition: all 0.2s; box-shadow: 0 4px 14px rgba(59,130,246,0.3);
+  }
+  .btn-join-opt:hover { transform: translateY(-1px); }
+
+  /* ===== APP ===== */
+  #appScreen { display: none; flex-direction: column; height: 100vh; }
+  header {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 18px; background: var(--surface);
+    border-bottom: 1px solid var(--border); z-index: 100; flex-shrink: 0;
+    box-shadow: 0 1px 4px var(--shadow);
+  }
+  .logo { font-size: 17px; font-weight: 800; color: var(--accent); white-space: nowrap; }
+
+  /* Room name - editable */
+  .room-name-wrap { display: flex; align-items: center; gap: 6px; }
+  .room-name-display {
+    font-size: 14px; font-weight: 700; color: var(--text);
+    cursor: pointer; border-bottom: 1.5px dashed var(--border);
+    padding-bottom: 1px; transition: border-color 0.2s; max-width: 180px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .room-name-display:hover { border-color: var(--accent2); color: var(--accent2); }
+  .room-name-input {
+    font-size: 14px; font-weight: 700; color: var(--text);
+    border: none; border-bottom: 2px solid var(--accent2);
+    outline: none; background: transparent; font-family: inherit;
+    width: 180px; padding-bottom: 1px; display: none;
+  }
+  .edit-name-hint { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
+
+  .room-badge {
+    background: #fff5f3; border: 1px solid #ffc4b8;
+    border-radius: 20px; padding: 3px 10px;
+    font-size: 12px; font-weight: 700; color: var(--accent); letter-spacing: 3px;
+  }
+  .header-right { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+  .online-avatars { display: flex; align-items: center; }
+  .online-av {
+    width: 26px; height: 26px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 700; border: 2px solid #fff;
+    margin-left: -6px; color: #fff;
+  }
+  .online-av:first-child { margin-left: 0; }
+  .share-btn {
+    display: flex; align-items: center; gap: 5px;
+    background: var(--accent); color: white; border: none;
+    border-radius: 20px; padding: 6px 14px; font-size: 13px;
+    font-weight: 600; cursor: pointer; font-family: inherit;
+    transition: all 0.2s; box-shadow: 0 2px 8px rgba(255,92,58,0.3);
+  }
+  .share-btn:hover { transform: translateY(-1px); }
+  .main { display: flex; flex: 1; overflow: hidden; }
+  .sidebar {
+    width: 300px; background: var(--surface); border-right: 1px solid var(--border);
+    display: flex; flex-direction: column; overflow: hidden; flex-shrink: 0;
+    transition: width 0.25s ease, min-width 0.25s ease;
+    position: relative;
+  }
+  .sidebar.collapsed { width: 0; min-width: 0; border-right: none; }
+  .sidebar.collapsed .sidebar-inner { opacity: 0; pointer-events: none; }
+  .sidebar-inner { display: flex; flex-direction: column; flex: 1; overflow: hidden; min-width: 300px; transition: opacity 0.2s; }
+  .sidebar-toggle {
+    position: absolute; top: 50%; right: -16px; transform: translateY(-50%);
+    width: 16px; height: 48px; background: var(--surface);
+    border: 1px solid var(--border); border-left: none;
+    border-radius: 0 8px 8px 0; cursor: pointer; z-index: 50;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px; color: var(--text-muted); transition: background 0.15s;
+    box-shadow: 2px 0 6px var(--shadow);
+  }
+  .sidebar-toggle:hover { background: var(--surface2); color: var(--text); }
+  .sidebar.collapsed .sidebar-toggle { right: -16px; border-left: none; }
+  .search-box { padding: 12px; border-bottom: 1px solid var(--border); }
+  .search-wrap { position: relative; }
+  .search-input-wrap {
+    display: flex; align-items: center; gap: 7px;
+    background: var(--surface2); border: 1.5px solid var(--border);
+    border-radius: 10px; padding: 8px 12px; transition: border-color 0.2s;
+  }
+  .search-input-wrap:focus-within { border-color: var(--accent2); background: #fff; }
+  .search-input-wrap input { background: none; border: none; outline: none; color: var(--text); font-size: 13px; width: 100%; font-family: inherit; }
+  .search-input-wrap input::placeholder { color: var(--text-muted); }
+  .search-clear { cursor: pointer; color: var(--text-muted); font-size: 12px; padding: 2px; flex-shrink: 0; display: none; }
+  .search-clear.show { display: block; }
+  .search-results {
+    position: absolute; left: 0; right: 0; top: calc(100% + 6px);
+    background: var(--surface); border: 1.5px solid var(--border);
+    border-radius: 12px; max-height: 260px; overflow-y: auto;
+    z-index: 300; box-shadow: 0 8px 28px var(--shadow-md); display: none;
+  }
+  .search-results.show { display: block; }
+  .search-loading { padding: 14px; text-align: center; font-size: 12px; color: var(--text-muted); }
+  .search-result-item { padding: 10px 14px; cursor: pointer; border-bottom: 1px solid var(--border); transition: background 0.12s; display: flex; align-items: center; gap: 10px; }
+  .search-result-item:last-child { border-bottom: none; }
+  .search-result-item:hover { background: var(--surface2); }
+  .search-result-item:hover .sri-add { opacity: 1; }
+  .sri-icon { font-size: 16px; flex-shrink: 0; }
+  .sri-text { flex: 1; min-width: 0; }
+  .search-result-item .rname { font-size: 13px; font-weight: 600; }
+  .search-result-item .raddr { font-size: 11px; color: var(--text-muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sri-add { opacity: 0; font-size: 11px; font-weight: 600; color: var(--accent2); background: #eff6ff; padding: 3px 8px; border-radius: 6px; flex-shrink: 0; transition: opacity 0.13s; }
+  .tabs { display: flex; border-bottom: 1px solid var(--border); }
+  .tab { flex: 1; padding: 10px; text-align: center; font-size: 13px; font-weight: 500; cursor: pointer; color: var(--text-muted); border-bottom: 2px solid transparent; transition: all 0.18s; }
+  .tab.active { color: var(--accent2); border-bottom-color: var(--accent2); }
+  .marks-list { flex: 1; overflow-y: auto; padding: 8px; }
+  .marks-list::-webkit-scrollbar { width: 4px; }
+  .marks-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+  .mark-item { display: flex; align-items: flex-start; gap: 9px; padding: 10px; border-radius: 10px; border: 1.5px solid transparent; cursor: pointer; transition: all 0.14s; margin-bottom: 4px; }
+  .mark-item:hover { background: var(--surface2); border-color: var(--border); }
+  .mark-dot { width: 11px; height: 11px; border-radius: 50%; margin-top: 3px; flex-shrink: 0; box-shadow: 0 1px 4px rgba(0,0,0,0.2); }
+  .mark-info { flex: 1; min-width: 0; }
+  .mark-place { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mark-meta { font-size: 11px; color: var(--text-muted); margin-top: 2px; line-height: 1.4; }
+  .mark-actions { display: flex; gap: 4px; align-items: center; opacity: 0; transition: opacity 0.13s; flex-shrink: 0; }
+  .mark-item:hover .mark-actions { opacity: 1; }
+  .mark-del, .mark-nav { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 13px; padding: 3px 5px; border-radius: 5px; transition: all 0.13s; }
+  .mark-del:hover { color: var(--accent); background: #fff5f3; }
+  .mark-nav:hover { color: var(--accent2); background: #eff6ff; }
+  .empty-tip { text-align: center; color: var(--text-muted); font-size: 13px; padding: 40px 20px; line-height: 1.8; }
+  .empty-tip .emoji { font-size: 30px; display: block; margin-bottom: 8px; }
+  #map-container { flex: 1; position: relative; }
+  .map-tip { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); background: rgba(255,255,255,0.92); backdrop-filter: blur(8px); border: 1px solid var(--border); border-radius: 20px; padding: 7px 16px; font-size: 12px; color: var(--text-muted); z-index: 10; pointer-events: none; white-space: nowrap; box-shadow: 0 2px 8px var(--shadow); }
+
+  /* ===== MOBILE RESPONSIVE ===== */
+  @media (max-width: 600px) {
+    header { padding: 8px 12px; gap: 6px; }
+    .logo { font-size: 15px; }
+    .room-name-display { max-width: 100px; font-size: 13px; }
+    .room-badge { display: none; }
+    .edit-name-hint { display: none; }
+    .share-btn { padding: 6px 10px; font-size: 12px; }
+    .online-avatars { display: none; }
+    #headerUserInfo { display: none; }
+
+    .main { flex-direction: column; }
+    .sidebar {
+      width: 100% !important;
+      min-width: 0 !important;
+      height: 40vh;
+      border-right: none !important;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .sidebar.collapsed { height: 0; width: 100% !important; }
+    .sidebar-inner { min-width: unset; }
+    .sidebar-toggle {
+      top: unset; bottom: -16px; right: 50%; transform: translateX(50%);
+      width: 48px; height: 16px; border-radius: 0 0 8px 8px;
+      border-top: none; border-left: 1px solid var(--border); border-right: 1px solid var(--border);
+      box-shadow: 0 2px 6px var(--shadow);
+    }
+    #map-container { flex: 1; min-height: 200px; }
+    .map-tip { font-size: 11px; padding: 5px 12px; bottom: 12px; white-space: normal; text-align: center; max-width: 80vw; }
+    .room-card { padding: 28px 20px 24px; }
+    .auth-card { padding: 28px 20px 24px; }
+    .modal { padding: 20px; }
+  }
+
+  /* Modal */
+  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.35); display: flex; align-items: center; justify-content: center; z-index: 1000; backdrop-filter: blur(4px); opacity: 0; pointer-events: none; transition: opacity 0.2s; }
+  .modal-overlay.show { opacity: 1; pointer-events: all; }
+  .modal { background: var(--surface); border-radius: 18px; padding: 28px; width: 380px; max-width: 90vw; box-shadow: 0 20px 60px rgba(0,0,0,0.15); transform: scale(0.95); transition: transform 0.2s; }
+  .modal-overlay.show .modal { transform: scale(1); }
+  .modal h2 { font-size: 17px; font-weight: 700; margin-bottom: 5px; }
+  .modal p { font-size: 13px; color: var(--text-muted); margin-bottom: 18px; line-height: 1.5; }
+  .modal input[type="text"] { width: 100%; background: var(--surface2); border: 1.5px solid var(--border); border-radius: 10px; padding: 10px 14px; color: var(--text); font-size: 14px; font-family: inherit; outline: none; margin-bottom: 14px; transition: border-color 0.2s; }
+  .modal input:focus { border-color: var(--accent2); background: #fff; }
+  .modal-btns { display: flex; gap: 10px; justify-content: flex-end; }
+  .btn-primary { background: var(--accent); color: white; border: none; border-radius: 10px; padding: 9px 20px; font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit; transition: all 0.18s; box-shadow: 0 2px 8px rgba(255,92,58,0.3); }
+  .btn-primary:hover { transform: translateY(-1px); }
+  .btn-secondary { background: var(--surface2); color: var(--text-muted); border: 1.5px solid var(--border); border-radius: 10px; padding: 9px 16px; font-size: 14px; cursor: pointer; font-family: inherit; transition: all 0.18s; }
+  .btn-secondary:hover { color: var(--text); }
+
+  /* Add mark modal improvements */
+  .mark-location-card {
+    background: var(--surface2); border: 1.5px solid var(--border);
+    border-radius: 12px; padding: 12px 14px; margin-bottom: 16px;
+    display: flex; align-items: flex-start; gap: 10px;
+  }
+  .mark-location-pin { font-size: 20px; flex-shrink: 0; margin-top: 1px; }
+  .mark-location-text { flex: 1; min-width: 0; }
+  .mark-location-name { font-size: 14px; font-weight: 700; color: var(--text); line-height: 1.4; }
+  .mark-location-coords { font-size: 11px; color: var(--text-muted); margin-top: 3px; }
+  .modal-field-label { font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 6px; text-align: left; }
+
+  .share-code-big { font-size: 38px; font-weight: 900; letter-spacing: 10px; color: var(--accent); text-align: center; background: #fff5f3; border: 2px dashed #ffc4b8; border-radius: 14px; padding: 14px 10px; margin-bottom: 6px; cursor: pointer; transition: background 0.18s; user-select: none; }
+  .share-code-big:hover { background: #ffe8e3; }
+  .share-copy-row { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
+  .share-link-box { flex: 1; background: var(--surface2); border: 1.5px solid var(--border); border-radius: 10px; padding: 8px 12px; font-size: 11px; color: var(--accent2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .copy-hint { font-size: 12px; color: var(--accent3); text-align: center; margin-top: 6px; height: 16px; }
+
+  /* Toast */
+  .toast { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%) translateY(10px); background: #1a1d23; color: #fff; padding: 10px 20px; border-radius: 20px; font-size: 13px; font-weight: 500; z-index: 9999; opacity: 0; transition: all 0.25s; pointer-events: none; white-space: nowrap; }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+
+<!-- AUTH SCREEN -->
+<div id="authScreen">
+  <div class="auth-card">
+    <div class="auth-logo">📍</div>
+    <div class="auth-title">一起去玩</div>
+    <div class="auth-sub">设置你的账号<br>换设备也能找到你的旅行</div>
+    <div class="auth-tabs">
+      <button class="auth-tab active" id="authTabLogin" onclick="switchAuthTab('login')">登录</button>
+      <button class="auth-tab" id="authTabRegister" onclick="switchAuthTab('register')">注册</button>
+    </div>
+    <div id="authError" class="auth-error"></div>
+    <div class="auth-field">
+      <label>用户名 <span style="font-weight:400;color:var(--text-muted)">（字母/数字，最多16位）</span></label>
+      <input class="auth-input" id="authUsername" type="text" placeholder="如：alice123" maxlength="16" autocomplete="username">
+    </div>
+    <div class="auth-field">
+      <label>密码 <span style="font-weight:400;color:var(--text-muted)">（至少6位）</span></label>
+      <input class="auth-input" id="authPassword" type="password" placeholder="至少6位" autocomplete="current-password">
+    </div>
+    <div class="auth-field" id="authNicknameField" style="display:none">
+      <label>显示昵称 <span style="font-weight:400;color:var(--text-muted)">（地图上显示的名字）</span></label>
+      <input class="auth-input" id="authNickname" type="text" placeholder="最多8个字" maxlength="8">
+    </div>
+    <div class="auth-field" id="authColorField" style="display:none">
+      <label>选个颜色代表你</label>
+      <div class="color-pick-row" id="authColorPicker" style="justify-content:flex-start;margin-bottom:0"></div>
+    </div>
+    <button class="auth-btn" id="authSubmitBtn" onclick="handleAuth()">登录</button>
+  </div>
+</div>
+
+<!-- ROOM SCREEN -->
+<div id="roomScreen" style="display:none">
+  <div class="room-card">
+    <div class="room-logo">📍</div>
+    <div class="room-title">一起去玩</div>
+    <div class="room-sub">和朋友共享一张地图<br>标记你们各自想去的地方</div>
+
+    <!-- Step 0: Home -->
+    <div class="room-step active" id="step0">
+      <!-- History rooms -->
+      <div class="history-section" id="historySection" style="display:none">
+        <div class="history-title">📂 最近的旅行</div>
+        <div class="history-list" id="historyList"></div>
+        <div class="history-divider" style="margin-top:16px">
+          <div class="history-divider-line"></div>
+          <div class="history-divider-text">或者新建 / 加入</div>
+          <div class="history-divider-line"></div>
+        </div>
+      </div>
+      <button class="btn-create-opt" onclick="goStep('stepCreate')">✨ 创建新旅行</button>
+      <button class="btn-join-opt" onclick="goStep('stepJoin')">🔑 加入已有旅行</button>
+    </div>
+
+    <!-- Create -->
+    <div class="room-step" id="stepCreate">
+      <div style="font-size:13px;color:var(--text-muted);margin-bottom:6px;">把这个六位邀请码发给朋友</div>
+      <div class="code-display" id="generatedCode" onclick="copyGeneratedCode()">------</div>
+      <div class="code-copy-hint">👆 点击复制，发给朋友</div>
+      <div class="field-label">旅行名称 <span style="font-weight:400;color:var(--text-muted)">（所有人可见）</span></div>
+      <input class="name-input" id="createTripName" placeholder="如：苏州之行、周末探店..." maxlength="20">
+      <div class="field-label">你的昵称</div>
+      <input class="name-input" id="createName" placeholder="最多6个字" maxlength="6">
+      <div class="field-label">选个颜色代表你</div>
+      <div class="color-pick-row" id="createColorPicker"></div>
+      <button class="btn-enter" onclick="createRoom()">进入地图 →</button>
+      <div><span class="back-link" onclick="goStep('step0')">← 返回</span></div>
+    </div>
+
+    <!-- Join -->
+    <div class="room-step" id="stepJoin">
+      <div style="font-size:13px;color:var(--text-muted);margin-bottom:12px;">输入朋友的六位邀请码</div>
+      <div class="code-inputs" id="codeInputs">
+        <input class="code-input-box" maxlength="1" inputmode="numeric">
+        <input class="code-input-box" maxlength="1" inputmode="numeric">
+        <input class="code-input-box" maxlength="1" inputmode="numeric">
+        <input class="code-input-box" maxlength="1" inputmode="numeric">
+        <input class="code-input-box" maxlength="1" inputmode="numeric">
+        <input class="code-input-box" maxlength="1" inputmode="numeric">
+      </div>
+      <div class="field-label">你的昵称</div>
+      <input class="name-input" id="joinName" placeholder="最多6个字" maxlength="6">
+      <div class="field-label">选个颜色代表你</div>
+      <div class="color-pick-row" id="joinColorPicker"></div>
+      <button class="btn-enter blue" onclick="joinRoom()">加入地图 →</button>
+      <div><span class="back-link" onclick="goStep('step0')">← 返回</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="appScreen">
+  <header>
+    <div class="logo">📍</div>
+    <div class="room-name-wrap">
+      <div class="room-name-display" id="roomNameDisplay" onclick="startEditRoomName()" title="点击修改旅行名称">未命名旅行</div>
+      <input class="room-name-input" id="roomNameInput" maxlength="20" onblur="saveRoomName()" onkeydown="if(event.key==='Enter')saveRoomName()">
+      <span class="edit-name-hint" id="editNameHint">✏️</span>
+    </div>
+    <div class="room-badge" id="roomCodeBadge"></div>
+    <div class="header-right" id="headerRight">
+      <div class="online-avatars" id="onlineAvatars"></div>
+      <button class="share-btn" onclick="openShareModal()">🔗 邀请朋友</button>
+    </div>
+  </header>
+  <div class="main">
+    <div class="sidebar" id="sidebar">
+      <button class="sidebar-toggle" id="sidebarToggle" onclick="toggleSidebar()" title="收起/展开">◀</button>
+      <div class="sidebar-inner">
+      <div class="search-box">
+        <div class="search-wrap">
+          <div class="search-input-wrap">
+            <span style="color:var(--text-muted);font-size:14px">🔍</span>
+            <input type="text" id="searchInput" placeholder="搜索地点、商家..." autocomplete="off">
+            <span class="search-clear" id="searchClear" onclick="clearSearch()">✕</span>
+          </div>
+          <div class="search-results" id="searchResults"></div>
+        </div>
+      </div>
+      <div class="tabs">
+        <div class="tab active" id="tabAll" onclick="switchTab('all')">全部标记</div>
+        <div class="tab" id="tabMine" onclick="switchTab('mine')">我的标记</div>
+      </div>
+      <div class="marks-list" id="marksList"></div>
+      </div><!-- /sidebar-inner -->
+    </div>
+    <div id="map-container">
+      <div class="map-tip">点击地图任意位置 · 或搜索地点添加标记</div>
+    </div>
+  </div>
+</div>
+
+<!-- Add Mark Modal -->
+<div class="modal-overlay" id="addMarkModal">
+  <div class="modal">
+    <h2>📌 添加到地图</h2>
+    <div class="mark-location-card">
+      <div class="mark-location-pin">📍</div>
+      <div class="mark-location-text">
+        <div class="mark-location-name" id="addMarkName">地点名称</div>
+        <div class="mark-location-coords" id="addMarkAddr"></div>
+      </div>
+    </div>
+    <div class="modal-field-label">备注（可选）</div>
+    <input type="text" id="markNoteInput" placeholder="如：必吃！周末去、这个要排队..." maxlength="30">
+    <div class="modal-btns">
+      <button class="btn-secondary" onclick="closeAddMark()">取消</button>
+      <button class="btn-primary" onclick="confirmAddMark()">添加标记</button>
+    </div>
+  </div>
+</div>
+
+<!-- Share Modal -->
+<div class="modal-overlay" id="shareModal">
+  <div class="modal">
+    <h2>🔗 邀请朋友</h2>
+    <p>发邀请码或链接给朋友，让他们加入同一张地图</p>
+    <div class="share-code-big" id="shareCodeBig" onclick="copyCode2()"></div>
+    <div class="code-copy-hint" style="margin-bottom:12px">👆 点击邀请码复制</div>
+    <div class="share-copy-row">
+      <div class="share-link-box" id="shareLinkBox"></div>
+      <button class="btn-primary" style="padding:8px 12px;font-size:12px;white-space:nowrap" onclick="copyLink()">复制链接</button>
+    </div>
+    <div class="copy-hint" id="copyHint"></div>
+    <div style="margin-top:14px">
+      <button class="btn-secondary" style="width:100%" onclick="document.getElementById('shareModal').classList.remove('show')">关闭</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+const COLORS = ['#ff5c3a','#3b82f6','#22c55e','#f59e0b','#a855f7','#ec4899','#06b6d4','#84cc16'];
+let myColor = COLORS[0], myName = '', myId = '', roomCode = '';
+let marks = [], map = null, mapMarkers = {}, pendingMark = null, currentTab = 'all';
+let createColor = COLORS[0], joinColor = COLORS[1];
+let dbRef = null;
+let currentUser = null;
+let authColor = COLORS[0];
+
+// ===== FIREBASE =====
+const firebaseConfig = {
+  apiKey: "AIzaSyAcFLZZK7g75b0PBuJqRJkRxSG5DRhAEtY",
+  authDomain: "shareplanwithfriend.firebaseapp.com",
+  databaseURL: "https://shareplanwithfriend-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "shareplanwithfriend",
+  storageBucket: "shareplanwithfriend.firebasestorage.app",
+  messagingSenderId: "951321921709",
+  appId: "1:951321921709:web:d1ab3d01317cd193829e24"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+const auth = firebase.auth();
+
+function getRoomDbRef(code) { return db.ref('rooms/' + code + '/marks'); }
+function getRoomMetaDbRef(code) { return db.ref('rooms/' + code + '/meta'); }
+function getUserDbRef(uid) { return db.ref('users/' + uid); }
+
+// ===== AUTH UI =====
+let currentAuthTab = 'login';
+
+function usernameToEmail(username) {
+  // Convert username to fake email for Firebase Auth
+  return username.toLowerCase().replace(/[^a-z0-9]/g, '') + '@sharemapapp.com';
+}
+
+function switchAuthTab(tab) {
+  currentAuthTab = tab;
+  document.getElementById('authTabLogin').className = 'auth-tab' + (tab === 'login' ? ' active' : '');
+  document.getElementById('authTabRegister').className = 'auth-tab' + (tab === 'register' ? ' active' : '');
+  document.getElementById('authNicknameField').style.display = tab === 'register' ? 'block' : 'none';
+  document.getElementById('authColorField').style.display = tab === 'register' ? 'block' : 'none';
+  document.getElementById('authSubmitBtn').textContent = tab === 'login' ? '登录' : '注册';
+  document.getElementById('authError').classList.remove('show');
+  if (tab === 'register') buildAuthColorPicker();
+}
+
+function buildAuthColorPicker() {
+  const cp = document.getElementById('authColorPicker'); cp.innerHTML = '';
+  COLORS.forEach(c => {
+    const d = document.createElement('div');
+    d.className = 'color-dot' + (c === authColor ? ' sel' : '');
+    d.style.background = c;
+    d.onclick = () => {
+      authColor = c;
+      cp.querySelectorAll('.color-dot').forEach(e => e.classList.remove('sel'));
+      d.classList.add('sel');
+    };
+    cp.appendChild(d);
+  });
+}
+
+function showAuthError(msg) {
+  const el = document.getElementById('authError');
+  el.textContent = msg; el.classList.add('show');
+}
+
+function handleAuth() {
+  const username = document.getElementById('authUsername').value.trim();
+  const password = document.getElementById('authPassword').value;
+  const btn = document.getElementById('authSubmitBtn');
+
+  if (!username) { showAuthError('请填写用户名'); return; }
+  if (!/^[a-zA-Z0-9_一-龥]+$/.test(username)) { showAuthError('用户名只能包含字母、数字、下划线或中文'); return; }
+  if (!password || password.length < 6) { showAuthError('密码至少6位'); return; }
+
+  const fakeEmail = usernameToEmail(username);
+  btn.disabled = true;
+  btn.textContent = '请稍候...';
+  document.getElementById('authError').classList.remove('show');
+
+  // LOCAL persistence = stays logged in even after browser restart
+  auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).then(() => {
+    if (currentAuthTab === 'login') {
+      return auth.signInWithEmailAndPassword(fakeEmail, password);
+    } else {
+      const nickname = document.getElementById('authNickname').value.trim() || username;
+      return auth.createUserWithEmailAndPassword(fakeEmail, password)
+        .then(cred => {
+          return getUserDbRef(cred.user.uid).set({
+            nickname, color: authColor, username, createdAt: Date.now()
+          }).then(() => cred);
+        });
+    }
+  }).catch(err => {
+    btn.disabled = false;
+    btn.textContent = currentAuthTab === 'login' ? '登录' : '注册';
+    const msgs = {
+      'auth/user-not-found': '用户名不存在，请先注册',
+      'auth/wrong-password': '密码错误',
+      'auth/invalid-credential': '用户名或密码错误',
+      'auth/too-many-requests': '尝试次数过多，请稍后再试',
+      'auth/email-already-in-use': '该用户名已被注册，请换一个或直接登录',
+      'auth/weak-password': '密码太简单，请用更复杂的密码',
+    };
+    showAuthError(msgs[err.code] || (currentAuthTab === 'login' ? '登录' : '注册') + '失败，请重试');
+  });
+}
+
+// Enter key support for auth
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && document.getElementById('authScreen') && document.getElementById('authScreen').style.display !== 'none') {
+    handleAuth();
+  }
+});
+
+// ===== AUTH STATE LISTENER =====
+auth.onAuthStateChanged(user => {
+  if (user) {
+    // User logged in - load their profile
+    getUserDbRef(user.uid).once('value').then(snap => {
+      const profile = snap.val();
+      if (profile) {
+        currentUser = { uid: user.uid, nickname: profile.nickname, color: profile.color, email: profile.email };
+        myName = profile.nickname;
+        myColor = profile.color;
+        myId = user.uid;
+      } else {
+        // Fallback if profile missing
+        currentUser = { uid: user.uid, nickname: user.email.split('@')[0], color: COLORS[0], email: user.email };
+        myName = currentUser.nickname;
+        myColor = currentUser.color;
+        myId = user.uid;
+      }
+      // Show room screen
+      document.getElementById('authScreen').style.display = 'none';
+      document.getElementById('roomScreen').style.display = 'flex';
+      // Update header user info
+      updateHeaderUser();
+      checkURL();
+    });
+  } else {
+    // Not logged in - show auth screen
+    currentUser = null;
+    document.getElementById('authScreen').style.display = 'flex';
+    document.getElementById('roomScreen').style.display = 'none';
+    document.getElementById('appScreen').style.display = 'none';
+    document.getElementById('authSubmitBtn').disabled = false;
+    document.getElementById('authSubmitBtn').textContent = currentAuthTab === 'login' ? '登录' : '注册';
+  }
+});
+
+function updateHeaderUser() {
+  if (!currentUser) return;
+  // Add user info + logout to header
+  const headerRight = document.getElementById('headerRight');
+  if (headerRight) {
+    const existing = document.getElementById('headerUserInfo');
+    if (existing) existing.remove();
+    const div = document.createElement('div');
+    div.id = 'headerUserInfo';
+    div.className = 'user-info-row';
+    div.style.cssText = 'margin-bottom:0;padding:5px 10px;cursor:default';
+    div.innerHTML = `
+      <div class="user-avatar-sm" style="background:${currentUser.color}">${currentUser.nickname[0]}</div>
+      <span class="user-display-name">${escHtml(currentUser.nickname)}</span>
+      <button class="logout-btn" onclick="handleLogout()">退出</button>
+    `;
+    headerRight.insertBefore(div, headerRight.firstChild);
+  }
+}
+
+function handleLogout() {
+  if (dbRef) { dbRef.off(); dbRef = null; }
+  auth.signOut();
+}
+
+// ===== HISTORY (stored in Firebase per user) =====
+function loadHistory(cb) {
+  if (!currentUser) { cb([]); return; }
+  db.ref('users/' + currentUser.uid + '/history').once('value').then(snap => {
+    const data = snap.val();
+    cb(data ? Object.values(data).sort((a,b) => b.time - a.time).slice(0,10) : []);
+  });
+}
+
+function addToHistory(code, name) {
+  if (!currentUser) return;
+  db.ref('users/' + currentUser.uid + '/history/' + code).set({
+    code, name, time: Date.now()
+  });
+}
+
+function generateCode() { return Math.floor(100000 + Math.random() * 900000).toString(); }
+
+// ===== HISTORY UI =====
+function renderHistory() {
+  loadHistory(h => {
+    const sec = document.getElementById('historySection');
+    const list = document.getElementById('historyList');
+    if (!h.length) { sec.style.display = 'none'; return; }
+    sec.style.display = 'block';
+    list.innerHTML = '';
+    h.forEach(item => {
+      const d = document.createElement('div'); d.className = 'history-item';
+      d.innerHTML = `
+        <div class="history-item-icon">🗺️</div>
+        <div class="history-item-info">
+          <div class="history-item-name">${escHtml(item.name || '未命名旅行')}</div>
+          <div class="history-item-meta">${formatTime(item.time)}</div>
+        </div>
+        <div class="history-item-code">${item.code}</div>
+      `;
+      d.onclick = () => enterApp(item.code);
+      list.appendChild(d);
+    });
+  });
+}
+
+function escHtml(s) {
+  if (!s) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ===== ROOM NAME EDITING =====
+function startEditRoomName() {
+  const display = document.getElementById('roomNameDisplay');
+  const input = document.getElementById('roomNameInput');
+  const hint = document.getElementById('editNameHint');
+  input.value = display.textContent;
+  display.style.display = 'none';
+  input.style.display = 'block';
+  hint.style.display = 'none';
+  input.focus(); input.select();
+}
+
+function saveRoomName() {
+  const display = document.getElementById('roomNameDisplay');
+  const input = document.getElementById('roomNameInput');
+  const hint = document.getElementById('editNameHint');
+  const newName = input.value.trim() || '未命名旅行';
+  display.textContent = newName;
+  display.style.display = 'block';
+  input.style.display = 'none';
+  hint.style.display = 'inline';
+  getRoomMetaDbRef(roomCode).set({ name: newName });
+  addToHistory(roomCode, newName);
+  showToast('旅行名称已更新 ✓');
+}
+
+// ===== STEPS =====
+function goStep(id) {
+  document.querySelectorAll('.room-step').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  if (id === 'step0') { renderHistory(); }
+  if (id === 'stepCreate') {
+    const code = generateCode();
+    document.getElementById('generatedCode').textContent = code;
+    document.getElementById('generatedCode').dataset.code = code;
+    document.getElementById('createTripName').value = '';
+  }
+  if (id === 'stepJoin') {
+    initCodeInputs();
+    const params = new URLSearchParams(location.search);
+    const rc = params.get('room');
+    if (rc && /^\d{6}$/.test(rc)) {
+      const inputs = document.querySelectorAll('.code-input-box');
+      rc.split('').forEach((ch, i) => { inputs[i].value = ch; inputs[i].classList.add('filled'); });
+    }
+  }
+}
+
+function initCodeInputs() {
+  const inputs = [...document.querySelectorAll('.code-input-box')];
+  inputs.forEach((inp, i) => {
+    const fresh = inp.cloneNode(true); inp.parentNode.replaceChild(fresh, inp); inputs[i] = fresh;
+  });
+  inputs.forEach((inp, i) => {
+    inp.addEventListener('input', () => {
+      const v = inp.value.replace(/[^0-9]/g,'').slice(-1);
+      inp.value = v;
+      v ? inp.classList.add('filled') : inp.classList.remove('filled');
+      if (v && i < 5) inputs[i+1].focus();
+    });
+    inp.addEventListener('keydown', e => { if (e.key==='Backspace' && !inp.value && i>0) inputs[i-1].focus(); });
+    inp.addEventListener('paste', e => {
+      const txt = e.clipboardData.getData('text').replace(/[^0-9]/g,'').slice(0,6);
+      txt.split('').forEach((ch, j) => { if (inputs[j]) { inputs[j].value = ch; inputs[j].classList.add('filled'); } });
+      inputs[Math.min(txt.length, 5)].focus();
+      e.preventDefault();
+    });
+  });
+}
+
+function getEnteredCode() { return [...document.querySelectorAll('.code-input-box')].map(i => i.value).join(''); }
+
+function createRoom() {
+  const tripName = document.getElementById('createTripName').value.trim() || '未命名旅行';
+  const code = document.getElementById('generatedCode').dataset.code;
+  getRoomMetaDbRef(code).set({ name: tripName });
+  enterApp(code);
+}
+
+function joinRoom() {
+  const code = getEnteredCode();
+  if (code.length !== 6) { showToast('请输入完整的六位邀请码'); return; }
+  enterApp(code);
+}
+
+function enterApp(code) {
+  roomCode = code;
+  // myName, myColor, myId already set from auth
+
+  document.getElementById('roomScreen').style.display = 'none';
+  const app = document.getElementById('appScreen'); app.style.display = 'flex';
+  document.getElementById('roomCodeBadge').textContent = code;
+  document.getElementById('shareCodeBig').textContent = code;
+  const url = location.origin + location.pathname + '?room=' + code;
+  document.getElementById('shareLinkBox').textContent = url;
+  history.replaceState({}, '', '?room=' + code);
+
+  // Load room name from Firebase
+  getRoomMetaDbRef(code).on('value', snap => {
+    const meta = snap.val() || {};
+    const tripName = meta.name || '未命名旅行';
+    document.getElementById('roomNameDisplay').textContent = tripName;
+    addToHistory(code, tripName);
+  });
+
+  // Listen for real-time mark updates
+  if (dbRef) dbRef.off();
+  dbRef = getRoomDbRef(code);
+  dbRef.on('value', snap => {
+    const data = snap.val();
+    marks = data ? Object.values(data) : [];
+    if (map) { syncMapMarkers(); refreshMarksList(); }
+  });
+
+  if (map) { refreshMarksList(); }
+}
+
+function copyGeneratedCode() {
+  const code = document.getElementById('generatedCode').dataset.code;
+  navigator.clipboard.writeText(code).catch(()=>{});
+  const el = document.getElementById('generatedCode');
+  el.textContent = '已复制！';
+  setTimeout(() => el.textContent = code, 1200);
+}
+
+function checkURL() {
+  const params = new URLSearchParams(location.search);
+  if (params.get('room')) goStep('stepJoin');
+  else goStep('step0');
+}
+
+// ===== MAP =====
+function initMap() {
+  map = new AMap.Map('map-container', {
+    zoom: 12, center: [116.397428, 39.90923],
+    mapStyle: 'amap://styles/light',
+  });
+
+  map.on('click', e => {
+    if (!roomCode) return;
+    const lng = e.lnglat.getLng(), lat = e.lnglat.getLat();
+    pendingMark = { lng, lat, name: '', address: '' };
+    document.getElementById('addMarkName').textContent = '正在获取地址...';
+    document.getElementById('addMarkAddr').textContent = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+    document.getElementById('markNoteInput').value = '';
+    document.getElementById('addMarkModal').classList.add('show');
+
+    fetch(`https://restapi.amap.com/v3/geocode/regeo?location=${lng},${lat}&key=bd4b6263d37bdbf644f104f0bfccce6b&extensions=all&radius=200&output=json`)
+      .then(r => r.json())
+      .then(data => {
+        if (data.status === '1' && data.regeocode) {
+          const addr = data.regeocode.formatted_address;
+          const pois = data.regeocode.pois;
+          const displayName = (pois && pois.length > 0) ? pois[0].name : addr;
+          pendingMark.name = displayName;
+          pendingMark.address = addr;
+          document.getElementById('addMarkName').textContent = displayName;
+          document.getElementById('addMarkAddr').textContent = addr;
+        } else {
+          pendingMark.name = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+          document.getElementById('addMarkName').textContent = pendingMark.name;
+        }
+      })
+      .catch(() => {
+        pendingMark.name = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+        document.getElementById('addMarkName').textContent = pendingMark.name;
+      });
+  });
+
+  initSearch();
+  if (roomCode) { refreshMarksList(); }
+}
+
+function initSearch() {
+  const WEB_KEY = 'bd4b6263d37bdbf644f104f0bfccce6b';
+  const inp = document.getElementById('searchInput');
+  let t;
+
+  inp.addEventListener('input', () => {
+    const q = inp.value.trim();
+    const clearBtn = document.getElementById('searchClear');
+    q ? clearBtn.classList.add('show') : clearBtn.classList.remove('show');
+    clearTimeout(t);
+    if (!q) { hideSearchResults(); return; }
+    const el = document.getElementById('searchResults');
+    el.innerHTML = '<div class="search-loading">🔍 搜索中...</div>';
+    el.classList.add('show');
+    t = setTimeout(() => {
+      fetch(`https://restapi.amap.com/v3/assistant/inputtips?keywords=${encodeURIComponent(q)}&key=${WEB_KEY}&datatype=poi&citylimit=false&output=json`)
+        .then(r => r.json())
+        .then(data => {
+          if (data.status === '1' && data.tips && data.tips.length > 0) {
+            const valid = data.tips.filter(x => x.location && x.location !== '[]' && x.location !== '' && x.location.includes(','));
+            if (valid.length > 0) {
+              const converted = valid.slice(0, 8).map(tip => ({
+                name: tip.name,
+                location: { lng: parseFloat(tip.location.split(',')[0]), lat: parseFloat(tip.location.split(',')[1]) },
+                district: tip.district || '',
+                address: (tip.address && tip.address !== '[]') ? tip.address : ''
+              }));
+              showSearchResults(converted);
+            } else {
+              el.innerHTML = '<div class="search-loading">没有找到相关地点</div>';
+            }
+          } else {
+            el.innerHTML = '<div class="search-loading">没有找到相关地点</div>';
+          }
+        })
+        .catch(err => {
+          console.error('搜索错误:', err);
+          el.innerHTML = '<div class="search-loading">搜索出错，请重试</div>';
+        });
+    }, 300);
+  });
+
+  inp.addEventListener('keydown', e => { if (e.key === 'Escape') clearSearch(); });
+}
+
+function showSearchResults(tips) {
+  const el = document.getElementById('searchResults');
+  el.innerHTML = '';
+  tips.forEach(tip => {
+    const d = document.createElement('div'); d.className = 'search-result-item';
+    const addr = [tip.district, tip.address].filter(Boolean).join(' ');
+    d.innerHTML = `
+      <div class="sri-icon">📍</div>
+      <div class="sri-text">
+        <div class="rname">${escHtml(tip.name)}</div>
+        ${addr ? `<div class="raddr">${escHtml(addr)}</div>` : ''}
+      </div>
+      <div class="sri-add">+ 添加</div>
+    `;
+    d.onclick = () => {
+      const { lng, lat } = tip.location;
+      map.setCenter([lng, lat]); map.setZoom(16);
+      hideSearchResults();
+      document.getElementById('searchInput').value = '';
+      document.getElementById('searchClear').classList.remove('show');
+      if (!roomCode) return;
+      pendingMark = { lng, lat, name: tip.name, address: [tip.district, tip.address].filter(Boolean).join(' ') || tip.name };
+      document.getElementById('addMarkName').textContent = tip.name;
+      document.getElementById('addMarkAddr').textContent = pendingMark.address;
+      document.getElementById('markNoteInput').value = '';
+      document.getElementById('addMarkModal').classList.add('show');
+      setTimeout(() => document.getElementById('markNoteInput').focus(), 150);
+    };
+    el.appendChild(d);
+  });
+  el.classList.add('show');
+}
+
+function hideSearchResults() { document.getElementById('searchResults').classList.remove('show'); }
+function clearSearch() {
+  document.getElementById('searchInput').value = '';
+  document.getElementById('searchClear').classList.remove('show');
+  hideSearchResults();
+}
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('.search-wrap')) hideSearchResults();
+});
+
+function closeAddMark() { document.getElementById('addMarkModal').classList.remove('show'); pendingMark = null; }
+
+function confirmAddMark() {
+  if (!pendingMark) return;
+  const mark = {
+    id: Date.now() + '_' + Math.random().toString(36).slice(2),
+    userId: myId, userName: myName, userColor: myColor,
+    lng: pendingMark.lng, lat: pendingMark.lat,
+    name: pendingMark.name || `${pendingMark.lat.toFixed(5)}, ${pendingMark.lng.toFixed(5)}`,
+    address: pendingMark.address || '',
+    note: document.getElementById('markNoteInput').value.trim(),
+    time: Date.now()
+  };
+  dbRef.child(mark.id).set(mark);
+  document.getElementById('addMarkModal').classList.remove('show'); pendingMark = null;
+  showToast('标记已添加 ✓');
+}
+
+function addMarkerToMap(mark) {
+  const marker = new AMap.Marker({
+    position: [mark.lng, mark.lat],
+    content: `<div style="width:16px;height:16px;border-radius:50%;background:${mark.userColor};border:2.5px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.28);cursor:pointer;transition:transform 0.15s" onmouseover="this.style.transform='scale(1.3)'" onmouseout="this.style.transform='scale(1)'"></div>`,
+    anchor: 'center',
+  });
+  const noteHtml = mark.note ? `<div style="font-size:12px;color:#555;margin:4px 0;padding:5px 8px;background:#f5f7fa;border-radius:6px">💬 ${escHtml(mark.note)}</div>` : '';
+  const addrHtml = mark.address && mark.address !== mark.name ? `<div style="font-size:11px;color:#999;margin-top:3px">${escHtml(mark.address)}</div>` : '';
+  const iw = new AMap.InfoWindow({
+    content: `<div style="font-family:'Noto Sans SC',sans-serif;padding:8px 4px;min-width:180px;max-width:240px">
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+        <div style="width:10px;height:10px;border-radius:50%;background:${mark.userColor};flex-shrink:0"></div>
+        <span style="font-weight:700;font-size:14px;color:#1a1d23">${escHtml(mark.name)}</span>
+      </div>
+      ${addrHtml}${noteHtml}
+      <div style="font-size:11px;color:#999;margin-top:6px">${escHtml(mark.userName)} · ${formatTime(mark.time)}</div>
+    </div>`,
+    offset: new AMap.Pixel(0, -12),
+  });
+  marker.on('click', () => iw.open(map, marker.getPosition()));
+  marker.setMap(map);
+  mapMarkers[mark.id] = marker;
+}
+
+function syncMapMarkers() {
+  Object.keys(mapMarkers).forEach(id => {
+    if (!marks.find(m => m.id === id)) { mapMarkers[id].setMap(null); delete mapMarkers[id]; }
+  });
+  marks.forEach(m => { if (!mapMarkers[m.id]) addMarkerToMap(m); });
+}
+
+function switchTab(tab) {
+  currentTab = tab;
+  document.getElementById('tabAll').className = 'tab' + (tab === 'all' ? ' active' : '');
+  document.getElementById('tabMine').className = 'tab' + (tab === 'mine' ? ' active' : '');
+  refreshMarksList();
+}
+
+function refreshMarksList() {
+  const list = document.getElementById('marksList');
+  const shown = currentTab === 'mine' ? marks.filter(m => m.userId === myId) : marks;
+  if (!shown.length) {
+    list.innerHTML = `<div class="empty-tip"><span class="emoji">${currentTab === 'mine' ? '✏️' : '🗺️'}</span>${currentTab === 'mine' ? '你还没有标记任何地点' : '点击地图或搜索地点<br>来添加你想去的地方'}</div>`;
+  } else {
+    list.innerHTML = '';
+    [...shown].reverse().forEach(mark => {
+      const div = document.createElement('div'); div.className = 'mark-item';
+      const noteText = mark.note ? `· ${escHtml(mark.note)}` : '';
+      div.innerHTML = `
+        <div class="mark-dot" style="background:${mark.userColor}"></div>
+        <div class="mark-info">
+          <div class="mark-place">${escHtml(mark.name)}</div>
+          <div class="mark-meta">${escHtml(mark.userName)} ${noteText} · ${formatTime(mark.time)}</div>
+        </div>
+        <div class="mark-actions">
+          <button class="mark-nav" title="在地图上查看">🎯</button>
+          ${mark.userId === myId ? `<button class="mark-del" title="删除">✕</button>` : ''}
+        </div>
+      `;
+      div.querySelector('.mark-nav').onclick = e => { e.stopPropagation(); map.setCenter([mark.lng, mark.lat]); map.setZoom(16); };
+      const delBtn = div.querySelector('.mark-del');
+      if (delBtn) delBtn.onclick = e => { e.stopPropagation(); deleteMark(mark.id); };
+      div.onclick = () => { map.setCenter([mark.lng, mark.lat]); map.setZoom(16); };
+      list.appendChild(div);
+    });
+  }
+  syncMapMarkers();
+  const users = {};
+  marks.forEach(m => { users[m.userId] = { name: m.userName, color: m.userColor }; });
+  const av = document.getElementById('onlineAvatars'); av.innerHTML = '';
+  Object.values(users).forEach(u => {
+    const d = document.createElement('div'); d.className = 'online-av';
+    d.style.background = u.color; d.textContent = u.name ? u.name[0] : '?'; d.title = u.name;
+    av.appendChild(d);
+  });
+}
+
+function deleteMark(id) {
+  dbRef.child(id).remove();
+  showToast('已删除标记');
+}
+
+function toggleSidebar() {
+  const sidebar = document.getElementById('sidebar');
+  const btn = document.getElementById('sidebarToggle');
+  const isMobile = window.innerWidth <= 600;
+  sidebar.classList.toggle('collapsed');
+  const collapsed = sidebar.classList.contains('collapsed');
+  if (isMobile) {
+    btn.textContent = collapsed ? '▲' : '▼';
+  } else {
+    btn.textContent = collapsed ? '▶' : '◀';
+  }
+}
+
+function openShareModal() { document.getElementById('shareModal').classList.add('show'); }
+function copyCode2() { navigator.clipboard.writeText(roomCode).catch(() => {}); showHint('邀请码已复制！'); }
+function copyLink() { navigator.clipboard.writeText(location.href).catch(() => {}); showHint('链接已复制！'); }
+function showHint(msg) { const h = document.getElementById('copyHint'); h.textContent = '✅ ' + msg; setTimeout(() => h.textContent = '', 2000); }
+
+function showToast(msg) {
+  const t = document.getElementById('toast'); t.textContent = msg;
+  t.classList.add('show'); clearTimeout(t._tid);
+  t._tid = setTimeout(() => t.classList.remove('show'), 2200);
+}
+
+function formatTime(ts) {
+  const d = Date.now() - ts;
+  if (d < 60000) return '刚刚';
+  if (d < 3600000) return Math.floor(d / 60000) + '分钟前';
+  if (d < 86400000) return Math.floor(d / 3600000) + '小时前';
+  const dt = new Date(ts); return `${dt.getMonth() + 1}/${dt.getDate()}`;
+}
+
+window._AMapSecurityConfig = { securityJsCode: 'bd4b6263d37bdbf644f104f0bfccce6b' };
+window._amapCb = function() {
+  AMap.plugin(['AMap.Geocoder', 'AMap.AutoComplete', 'AMap.PlaceSearch'], initMap);
+};
+</script>
+
+<!--
+  ★ 把下面的"19baf6ac62336e352d5be64d525b8f47"替换为你申请的Key
+  申请：https://console.amap.com/dev/key/app  →  创建应用  →  添加Key（选"Web端(JS API)"）
+-->
+<!-- 高德地图 -->
+<script src="https://webapi.amap.com/maps?v=2.0&key=19baf6ac62336e352d5be64d525b8f47&callback=_amapCb&plugin=AMap.Geocoder,AMap.AutoComplete,AMap.PlaceSearch"></script>
+
+</body>
+</html>
